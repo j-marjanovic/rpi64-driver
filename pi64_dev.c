@@ -36,10 +36,48 @@ char buf[16];
 struct spi_message msg;
 struct spi_transfer xfer;
 
+#define N64_ABS_MAX	127
+
+#define MASK_BTN_A	(0x80)
+#define MASK_BTN_B	(0x40)
+#define MASK_BTN_Z	(0x20)
+#define MASK_BTN_START	(0x10)
+#define MASK_BTN_TR	(0x1000)
+#define MASK_BTN_TL	(0x2000)
+#define MASK_DPAD_UP	(0x8)
+#define MASK_DPAD_DOWN	(0x4)
+#define MASK_DPAD_LEFT	(0x2)
+#define MASK_DPAD_RIGHT	(0x1)
+#define MASK_KEY_UP	(0x800)
+#define MASK_KEY_DOWN	(0x400)
+#define MASK_KEY_LEFT	(0x200)
+#define MASK_KEY_RIGHT	(0x100)
+
+#define ABS_TO_INT(x)	(x < 128 ? x : x - 255)
 
 //==============================================================================
 static void pi64_complete(void* context){
-        input_report_key(pi64_dev, BTN_0, buf[0] & 0x1);
+
+	uint32_t ctrl0 = *(uint32_t*)&buf[0];
+
+	input_report_key(pi64_dev, BTN_A,          ctrl0 & MASK_BTN_A );
+	input_report_key(pi64_dev, BTN_B,          ctrl0 & MASK_BTN_B );
+	input_report_key(pi64_dev, BTN_Z,          ctrl0 & MASK_BTN_Z );
+	input_report_key(pi64_dev, BTN_START,      ctrl0 & MASK_BTN_START );
+	input_report_key(pi64_dev, BTN_TR,         ctrl0 & MASK_BTN_TR );
+	input_report_key(pi64_dev, BTN_TL,         ctrl0 & MASK_BTN_TL );
+	input_report_key(pi64_dev, BTN_DPAD_UP,    ctrl0 & MASK_DPAD_UP );
+	input_report_key(pi64_dev, BTN_DPAD_DOWN,  ctrl0 & MASK_DPAD_DOWN );
+	input_report_key(pi64_dev, BTN_DPAD_LEFT,  ctrl0 & MASK_DPAD_LEFT );
+	input_report_key(pi64_dev, BTN_DPAD_RIGHT, ctrl0 & MASK_DPAD_RIGHT );
+	input_report_key(pi64_dev, KEY_UP,         ctrl0 & MASK_KEY_UP );
+	input_report_key(pi64_dev, KEY_DOWN,       ctrl0 & MASK_KEY_DOWN );
+	input_report_key(pi64_dev, KEY_LEFT,       ctrl0 & MASK_KEY_LEFT );
+	input_report_key(pi64_dev, KEY_RIGHT,      ctrl0 & MASK_KEY_RIGHT );
+
+	input_report_abs(pi64_dev, ABS_X, ABS_TO_INT(buf[3]));
+	input_report_abs(pi64_dev, ABS_Y, ABS_TO_INT(buf[2]));
+		
         input_sync(pi64_dev);
 }
 
@@ -78,7 +116,7 @@ static enum hrtimer_restart timer_function(struct hrtimer * timer){
 
 //==============================================================================
 static void timer_init(void){
-	kt_periode = ktime_set(1, 0); //seconds,nanoseconds
+	kt_periode = ktime_set(0, 20*1000*1000); //seconds,nanoseconds
 	hrtimer_init (& htimer, CLOCK_REALTIME, HRTIMER_MODE_REL);
 	htimer.function = timer_function;
 	hrtimer_start(& htimer, kt_periode, HRTIMER_MODE_REL);
@@ -98,8 +136,24 @@ static int pi64_probe(struct spi_device *spi){
 	}
 
 	pi64_dev->name  = MOD_NAME;
-	pi64_dev->evbit[0] = BIT_MASK(EV_KEY);
-	pi64_dev->keybit[BIT_WORD(BTN_0)] = BIT_MASK(BTN_0);
+	pi64_dev->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
+	pi64_dev->keybit[BIT_WORD(BTN_A)]          |= BIT_MASK(BTN_A);
+	pi64_dev->keybit[BIT_WORD(BTN_B)]          |= BIT_MASK(BTN_B);
+	pi64_dev->keybit[BIT_WORD(BTN_Z)]          |= BIT_MASK(BTN_Z);
+	pi64_dev->keybit[BIT_WORD(BTN_START)]      |= BIT_MASK(BTN_START);
+	pi64_dev->keybit[BIT_WORD(BTN_TR)]         |= BIT_MASK(BTN_TR);
+	pi64_dev->keybit[BIT_WORD(BTN_TL)]         |= BIT_MASK(BTN_TL);
+	pi64_dev->keybit[BIT_WORD(BTN_DPAD_UP)]    |= BIT_MASK(BTN_DPAD_UP);
+	pi64_dev->keybit[BIT_WORD(BTN_DPAD_DOWN)]  |= BIT_MASK(BTN_DPAD_DOWN);
+	pi64_dev->keybit[BIT_WORD(BTN_DPAD_LEFT)]  |= BIT_MASK(BTN_DPAD_LEFT);
+	pi64_dev->keybit[BIT_WORD(BTN_DPAD_RIGHT)] |= BIT_MASK(BTN_DPAD_RIGHT);
+	pi64_dev->keybit[BIT_WORD(KEY_UP)]         |= BIT_MASK(KEY_UP);
+	pi64_dev->keybit[BIT_WORD(KEY_DOWN)]       |= BIT_MASK(KEY_DOWN);
+	pi64_dev->keybit[BIT_WORD(KEY_LEFT)]       |= BIT_MASK(KEY_LEFT);
+	pi64_dev->keybit[BIT_WORD(KEY_RIGHT)]      |= BIT_MASK(KEY_RIGHT);
+
+	input_set_abs_params(pi64_dev, ABS_X, -N64_ABS_MAX, N64_ABS_MAX, 0, 0);
+	input_set_abs_params(pi64_dev, ABS_Y, -N64_ABS_MAX, N64_ABS_MAX, 0, 0);
 
 	rc = input_register_device(pi64_dev);
 	if (rc) {
